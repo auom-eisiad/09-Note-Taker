@@ -1,39 +1,92 @@
 const express = require('express');
 const path = require('path');
-const fs = require('fs');
-const { readFromFile, readAndAppend } = require('../helpers/fsUtils');
-const uuid = require('../helpers/uuid');
-const api = require('./public/assets/js/index');
-
-const PORT = 3001;
+const bodyParser = require('body-parser');
+const fsUtils = require('./helpers/fsUtils');
+const generateUUID = require('./helpers/uuid');
+const { readFromFile, writeToFile, readAndAppend } = fsUtils;
 
 const app = express();
+const PORT = process.env.PORT || 3000;
 
-// Middleware for parsing JSON and urlencoded form data
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-app.use('/api', api);
-
+app.use(bodyParser.urlencoded({ extended: true }));
+app.use(bodyParser.json());
 app.use(express.static('public'));
 
-app.get('/api', (req, res) =>
-  res.sendFile(path.join(__dirname, '/api'))
+// Routes
+app.get('/', (req,res) => 
+    res.sendFile(path.join(__dirname, '/public/index.html'))
 );
 
-// GET Route for homepage
-app.get('*', (req, res) =>
-  res.sendFile(path.join(__dirname, '/public/index.html'))
+app.get('/notes', (req,res) => 
+res.sendFile(path.join(__dirname, '/public/notes.html'))
 );
 
-app.get('/api/notes', (req, res) => {
-    console.info(`${req.method} notes recieved`);
-    readFromFile('./db/db.json').then((data) => res.json(JSON.parse(data)));
+app.get('*', (req,res) => 
+    res.sendFile(path.join(__dirname, '/public/index.html')),
+);
+
+// API Routes
+app.get('/api/notes', async (req, res) => {
+  try {
+    let notes = await readFromFile(path.join('db', 'db.json'));
+
+    // Ensure notes is an array
+    if (!Array.isArray(notes)) {
+      notes = [];
+    }
+
+    res.json(notes);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal Server Error');
+  }
 });
-  
-app.post('/api/notes', (req, res) => {
-    console.info(`${req.method} added notes`);
+
+app.post('/api/notes', async (req, res) => {
+  try {
+    let notes = await readFromFile(path.join('db', 'db.json'));
+
+    // Ensure notes is an array
+    if (!Array.isArray(notes)) {
+      notes = [];
+    }
+
+    const newNote = req.body;
+    newNote.id = generateUUID();
+    notes.push(newNote);
+
+    await writeToFile(path.join('db', 'db.json'), notes);
+
+    res.json(newNote);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal Server Error');
+  }
 });
 
-app.listen(PORT, () =>
-  console.log(`App listening at http://localhost:${PORT}`)
-);
+app.delete('/api/notes/:id', async (req, res) => {
+  try {
+    let notes = await readFromFile(path.join('db', 'db.json'));
+
+    // Ensure notes is an array
+    if (!Array.isArray(notes)) {
+      notes = [];
+    }
+
+    const noteId = req.params.id;
+
+    notes = notes.filter((note) => note.id !== noteId);
+
+    await writeToFile(path.join('db', 'db.json'), notes);
+
+    res.status(204).send();
+  } catch (error) {
+    console.error(error);
+    res.status(500).send('Internal Server Error');
+  }
+});
+
+// Start the server
+app.listen(PORT, () => {
+  console.log(`Server is running on http://localhost:${PORT}`);
+});
