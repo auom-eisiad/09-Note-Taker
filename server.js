@@ -1,15 +1,13 @@
 const express = require('express');
 const path = require('path');
-const bodyParser = require('body-parser');
-const fsUtils = require('./helpers/fsUtils');
-const generateUUID = require('./helpers/uuid');
-const { readFromFile, writeToFile, readAndAppend } = fsUtils;
+const fs = require('fs');
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3001;
+const dbFilePath = path.join(__dirname, 'db', 'db.json');
 
-app.use(bodyParser.urlencoded({ extended: true }));
-app.use(bodyParser.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 app.use(express.static('public'));
 
 // Routes
@@ -28,13 +26,7 @@ app.get('*', (req,res) =>
 // API Routes
 app.get('/api/notes', async (req, res) => {
   try {
-    let notes = await readFromFile(path.join('db', 'db.json'));
-
-    // Ensure notes is an array
-    if (!Array.isArray(notes)) {
-      notes = [];
-    }
-
+    const notes = await readFromFile(dbFilePath);
     res.json(notes);
   } catch (error) {
     console.error(error);
@@ -44,18 +36,18 @@ app.get('/api/notes', async (req, res) => {
 
 app.post('/api/notes', async (req, res) => {
   try {
-    let notes = await readFromFile(path.join('db', 'db.json'));
-
-    // Ensure notes is an array
-    if (!Array.isArray(notes)) {
-      notes = [];
-    }
-
+    let notes = await readFromFile(dbFilePath);
     const newNote = req.body;
-    newNote.id = generateUUID();
-    notes.push(newNote);
 
-    await writeToFile(path.join('db', 'db.json'), notes);
+    if (!Array.isArray(notes)) notes = [];
+
+    if (notes.length === 0) notes.push(0);
+
+    newNote.id = notes[0];
+    notes[0]++;
+
+    notes.push(newNote);
+    await writeToFile(dbFilePath, notes);
 
     res.json(newNote);
   } catch (error) {
@@ -66,20 +58,20 @@ app.post('/api/notes', async (req, res) => {
 
 app.delete('/api/notes/:id', async (req, res) => {
   try {
-    let notes = await readFromFile(path.join('db', 'db.json'));
-
-    // Ensure notes is an array
-    if (!Array.isArray(notes)) {
-      notes = [];
-    }
-
+    let notes = await readFromFile(dbFilePath);
     const noteId = req.params.id;
 
-    notes = notes.filter((note) => note.id !== noteId);
+    for (let i = 0; i < notes.length; i++) {
+      let note = notes[i];
 
-    await writeToFile(path.join('db', 'db.json'), notes);
+      if (note.id == noteId) {
+        notes.splice(i, 1);
+        await writeToFile(dbFilePath, notes);
+        break;
+      }
+    }
 
-    res.status(204).send();
+    res.json(true);
   } catch (error) {
     console.error(error);
     res.status(500).send('Internal Server Error');
@@ -90,3 +82,16 @@ app.delete('/api/notes/:id', async (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+async function readFromFile(filePath) {
+  try {
+    const content = await fs.readFile(filePath, 'utf-8');
+    return JSON.parse(content);
+  } catch (error) {
+    return [];
+  }
+}
+
+async function writeToFile(filePath, content) {
+  await fs.writeFile(filePath, JSON.stringify(content, null, 2));
+}
