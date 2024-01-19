@@ -1,97 +1,42 @@
-const express = require('express');
-const path = require('path');
-const fs = require('fs');
+// Import required modules
+const express = require('express'); // Import Express.js framework
+const path = require('path'); // Import the built-in path module for working with file paths
+const { clog } = require('./middleware/clog'); // Import custom middleware function
+const api = require('./routes/index.js'); // Import the router object
 
-const app = express();
+// Define the port the server will listen on, using an environment variable if available
 const PORT = process.env.PORT || 3001;
-const dbFilePath = path.join(__dirname, 'db', 'db.json');
 
-app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
+// Create an instance of the Express application
+const app = express();
+
+// Import and use custom middleware, "clog," to log incoming requests
+app.use(clog);
+
+// Middleware for parsing JSON and urlencoded form data
+app.use(express.json()); // Parse incoming JSON data
+app.use(express.urlencoded({ extended: true })); // Parse incoming URL-encoded form data
+
+// Route handling for API endpoints
+app.use('/api', api); // Use the router object for paths starting with '/api'
+
+// Serve static files from the 'public' directory
 app.use(express.static('public'));
 
 // Routes
-app.get('/', (req,res) => 
+app.get('/', (req, res) => 
     res.sendFile(path.join(__dirname, '/public/index.html'))
 );
 
-app.get('/notes', (req,res) => 
-res.sendFile(path.join(__dirname, '/public/notes.html'))
+app.get('/notes', (req, res) => 
+    res.sendFile(path.join(__dirname, '/public/notes.html'))
 );
 
-app.get('*', (req,res) => 
-    res.sendFile(path.join(__dirname, '/public/index.html')),
+app.get('*', (req, res) => 
+    res.sendFile(path.join(__dirname, '/public/index.html'))
 );
-
-// API Routes
-app.get('/api/notes', async (req, res) => {
-  try {
-    const notes = await readFromFile(dbFilePath);
-    res.json(notes);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send('Internal Server Error');
-  }
-});
-
-app.post('/api/notes', async (req, res) => {
-  try {
-    let notes = await readFromFile(dbFilePath);
-    const newNote = req.body;
-
-    if (!Array.isArray(notes)) notes = [];
-
-    if (notes.length === 0) notes.push(0);
-
-    newNote.id = notes[0];
-    notes[0]++;
-
-    notes.push(newNote);
-    await writeToFile(dbFilePath, notes);
-
-    res.json(newNote);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send('Internal Server Error');
-  }
-});
-
-app.delete('/api/notes/:id', async (req, res) => {
-  try {
-    let notes = await readFromFile(dbFilePath);
-    const noteId = req.params.id;
-
-    for (let i = 0; i < notes.length; i++) {
-      let note = notes[i];
-
-      if (note.id == noteId) {
-        notes.splice(i, 1);
-        await writeToFile(dbFilePath, notes);
-        break;
-      }
-    }
-
-    res.json(true);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send('Internal Server Error');
-  }
-});
 
 // Start the server
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
-
-async function readFromFile(filePath) {
-  try {
-    const content = await fs.readFile(filePath, 'utf-8');
-    return JSON.parse(content);
-  } catch (error) {
-    return [];
-  }
-}
-
-async function writeToFile(filePath, content) {
-  await fs.writeFile(filePath, JSON.stringify(content, null, 2));
-}
